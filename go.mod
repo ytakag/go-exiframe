@@ -1,4 +1,4 @@
-module github.com/mu-ruU1/go-exiframe
+module github.com/ytakag/go-exiframe
 
 go 1.24.2
 
