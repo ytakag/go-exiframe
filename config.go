@@ -15,6 +15,7 @@ type Config struct {
 	outputPath              string
 	outputDir               string
 	black, noFrame, noModel bool
+	overlayPosition         string
 	preserveExif            bool
 	frameRatio              float64
 	quality                 int
@@ -42,6 +43,7 @@ func parseConfig(args []string, output io.Writer) (Config, error) {
 	fs.BoolVar(&cfg.black, "black", false, "Use black frame (default white)")
 	fs.BoolVar(&cfg.noFrame, "no-frame", false, "Draw no border around the image")
 	fs.BoolVar(&cfg.noModel, "no-model", false, "Omit camera and lens data")
+	fs.StringVar(&cfg.overlayPosition, "overlay-position", "none", "Overlay position: none, full-width, top-left, top-right, bottom-left, bottom-right")
 	fs.BoolVar(&cfg.preserveExif, "preserve-exif", false, "Preserve source JPEG EXIF metadata in output")
 	fs.Float64Var(&cfg.frameRatio, "frame-ratio", defaultFrameRatio, "Frame width as a fraction of the shorter image side")
 	fs.IntVar(&cfg.quality, "quality", defaultJPEGQuality, "JPEG quality (1-100)")
@@ -64,6 +66,11 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.quality < 1 || cfg.quality > 100 {
 		return errors.New("-quality must be between 1 and 100")
+	}
+	switch cfg.overlayPosition {
+	case overlayNone, overlayFullWidth, overlayTopLeft, overlayTopRight, overlayBottomLeft, overlayBottomRight:
+	default:
+		return fmt.Errorf("invalid -overlay-position %q", cfg.overlayPosition)
 	}
 	if cfg.outputPath != "" && len(cfg.inputPaths) != 1 {
 		return errors.New("-o can only be used with one input; use -out-dir for multiple inputs")

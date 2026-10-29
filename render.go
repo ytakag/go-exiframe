@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/jpeg"
 	"os"
@@ -42,14 +43,36 @@ func renderImage(cfg Config, inputPath, outputPath string, meta *ExifData, exifS
 	defer bold.Close()
 	defer regular.Close()
 	left, right := buildLabelText(meta, cfg, bold, regular)
-	layout := layoutLabel(source.Bounds().Dx(), source.Bounds().Dy(), metrics, left, right)
+	layout, err := layoutLabel(source.Bounds().Dx(), source.Bounds().Dy(), metrics, left, right)
+	if err != nil {
+		return err
+	}
 	canvas := image.NewRGBA(layout.CanvasBounds)
 	frameColor, textColor := image.White, image.Black
 	if cfg.black {
 		frameColor, textColor = image.Black, image.White
 	}
+	if cfg.overlayPosition != overlayNone {
+		frameColor, textColor = image.Black, image.White
+		if cfg.black {
+			frameColor, textColor = image.White, image.Black
+		}
+	}
 	draw.Draw(canvas, canvas.Bounds(), frameColor, image.Point{}, draw.Src)
 	draw.Draw(canvas, layout.PhotoBounds, source, source.Bounds().Min, draw.Src)
+	if !layout.OverlayBounds.Empty() {
+		backdrop := color.RGBA{R: 0, G: 0, B: 0, A: 175}
+		if cfg.overlayPosition != overlayFullWidth {
+			backdrop.A = 150
+		}
+		if cfg.black {
+			backdrop = color.RGBA{R: 255, G: 255, B: 255, A: 210}
+			if cfg.overlayPosition != overlayFullWidth {
+				backdrop.A = 180
+			}
+		}
+		draw.Draw(canvas, layout.OverlayBounds, image.NewUniform(backdrop), image.Point{}, draw.Over)
+	}
 	for _, line := range layout.Text {
 		d := &font.Drawer{Dst: canvas, Src: textColor, Face: line.face, Dot: fixed.P(line.x, line.baseline)}
 		d.DrawString(line.text)

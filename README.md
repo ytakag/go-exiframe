@@ -23,6 +23,8 @@ Usage of go-exiframe:
         Draw no border around the image
   -no-model
         Omit camera and lens data
+  -overlay-position string
+        Overlay position: none, full-width, top-left, top-right, bottom-left, bottom-right (default "none")
   -o string
         Output JPEG path (single input only)
   -out-dir string
@@ -37,6 +39,8 @@ $ go-exiframe -f /path/to/image.jpg
 # Writes ./exiframe-image.jpg
 $ go-exiframe -f /path/to/image.jpg -o /path/to/result.jpg -quality 90
 $ go-exiframe -f ./first.jpg -f ./second.jpg -out-dir ./framed -preserve-exif
+$ go-exiframe -f ./image.jpg -overlay-position full-width
+$ go-exiframe -f ./image.jpg -overlay-position top-right
 ```
 
 ## 参考

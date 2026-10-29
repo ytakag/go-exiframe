@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -113,11 +114,18 @@ func getExif(path string) (*ExifData, []error, error) {
 	return data, warnings, nil
 }
 
-func setMake(d *ExifData, v string) error            { d.Make = v; return nil }
-func setModel(d *ExifData, v string) error           { d.Model = v; return nil }
-func setLensMake(d *ExifData, v string) error        { d.LensMake = v; return nil }
-func setLensModel(d *ExifData, v string) error       { d.LensModel = v; return nil }
-func setExposureTime(d *ExifData, v string) error    { d.ExposureTime = v; return nil }
+func setMake(d *ExifData, v string) error      { d.Make = v; return nil }
+func setModel(d *ExifData, v string) error     { d.Model = v; return nil }
+func setLensMake(d *ExifData, v string) error  { d.LensMake = v; return nil }
+func setLensModel(d *ExifData, v string) error { d.LensModel = v; return nil }
+func setExposureTime(d *ExifData, value string) error {
+	formatted, err := formatExposureTime(value)
+	if err != nil {
+		return err
+	}
+	d.ExposureTime = formatted
+	return nil
+}
 func setISO(d *ExifData, v string) error             { d.ISO = v; return nil }
 func setFocalLength35mm(d *ExifData, v string) error { d.FocalLength35mm = v; return nil }
 func setFocalLength(d *ExifData, v string) error     { d.FocalLength = v; return nil }
@@ -138,4 +146,24 @@ func setDateTimeOriginal(d *ExifData, value string) error {
 	}
 	d.DateTimeOriginal = t.Format("2006/01/02 15:04")
 	return nil
+}
+
+func formatExposureTime(value string) (string, error) {
+	seconds, ok := new(big.Rat).SetString(strings.TrimSpace(value))
+	if !ok || seconds.Sign() <= 0 {
+		return "", fmt.Errorf("invalid exposure time %q", value)
+	}
+	if seconds.Cmp(big.NewRat(1, 1)) >= 0 {
+		if seconds.IsInt() {
+			return seconds.Num().String(), nil
+		}
+		decimal := seconds.FloatString(3)
+		decimal = strings.TrimRight(strings.TrimRight(decimal, "0"), ".")
+		return decimal, nil
+	}
+	reciprocal := new(big.Rat).Inv(seconds)
+	if reciprocal.IsInt() {
+		return "1/" + reciprocal.Num().String(), nil
+	}
+	return seconds.RatString(), nil
 }

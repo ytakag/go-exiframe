@@ -48,7 +48,10 @@ func TestLayoutLabelOuterGaps(t *testing.T) {
 				DateTimeOriginal: "2026/10/29 12:34",
 			}
 			left, right := buildLabelText(meta, cfg, bold, regular)
-			layout := layoutLabel(tt.width, tt.height, metrics, left, right)
+			layout, err := layoutLabel(tt.width, tt.height, metrics, left, right)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(layout.Text) == 0 {
 				t.Fatal("expected label text")
 			}

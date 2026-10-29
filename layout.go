@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"strings"
 
@@ -8,17 +9,32 @@ import (
 )
 
 const (
-	defaultFrameRatio       = 0.03
-	maxFrameRatio           = 0.25
-	defaultJPEGQuality      = 100
-	minimumTextGap          = 50
-	textGapShortSideRatio   = 0.02
-	minimumSideInset        = 12
-	sideInsetShortSideRatio = 0.01
-	minimumFontSize         = 12.0
-	largeFontWidthRatio     = 0.035
-	largeFontHeightRatio    = 0.09
-	smallFontRatio          = 0.58
+	overlayNone              = "none"
+	overlayFullWidth         = "full-width"
+	overlayTopLeft           = "top-left"
+	overlayTopRight          = "top-right"
+	overlayBottomLeft        = "bottom-left"
+	overlayBottomRight       = "bottom-right"
+	defaultFrameRatio        = 0.03
+	maxFrameRatio            = 0.25
+	defaultJPEGQuality       = 100
+	minimumTextGap           = 50
+	textGapShortSideRatio    = 0.02
+	minimumSideInset         = 12
+	sideInsetShortSideRatio  = 0.01
+	minimumFontSize          = 12.0
+	largeFontWidthRatio      = 0.035
+	largeFontHeightRatio     = 0.09
+	smallFontRatio           = 0.58
+	overlayMinimumFontSize   = 7.0
+	overlayFontWidthRatio    = 0.025
+	overlayFontHeightRatio   = 0.05
+	overlayGapShortSideDiv   = 30
+	cornerFontShortSideRatio = 0.022
+	cornerSmallFontRatio     = 0.70
+	cornerSpacingFontRatio   = 0.35
+	cornerInsetFontRatio     = 0.50
+	cornerMaxWidthRatio      = 0.55
 )
 
 func compact(parts ...string) string {
@@ -43,29 +59,52 @@ type positionedText struct {
 }
 
 type LabelLayout struct {
-	CanvasBounds image.Rectangle
-	PhotoBounds  image.Rectangle
-	Text         []positionedText
+	CanvasBounds  image.Rectangle
+	PhotoBounds   image.Rectangle
+	OverlayBounds image.Rectangle
+	Text          []positionedText
 }
 
 type layoutMetrics struct {
 	framePad, textGap, sideInset int
 	largeFontSize, smallFontSize float64
+	overlayPosition              string
 }
 
 func calculateLayoutMetrics(width, height int, cfg Config) layoutMetrics {
+	position := cfg.overlayPosition
+	if position == "" {
+		position = overlayNone
+	}
 	shortSide := min(width, height)
 	largeFontSize := max(minimumFontSize, min(float64(width)*largeFontWidthRatio, float64(height)*largeFontHeightRatio))
 	framePad := int(float64(shortSide) * cfg.frameRatio)
-	if cfg.noFrame {
+	textGap := max(minimumTextGap, int(float64(shortSide)*textGapShortSideRatio))
+	sideInset := min(max(minimumSideInset, int(float64(shortSide)*sideInsetShortSideRatio)), max(1, width/8))
+	smallFontSize := largeFontSize * smallFontRatio
+	overlayMode := position != overlayNone
+	cornerOverlay := overlayMode && position != overlayFullWidth
+	if cfg.noFrame || overlayMode {
 		framePad = 0
 	}
+	if position == overlayFullWidth {
+		largeFontSize = max(overlayMinimumFontSize, min(float64(width)*overlayFontWidthRatio, float64(height)*overlayFontHeightRatio))
+		smallFontSize = largeFontSize * smallFontRatio
+		textGap = max(2, min(textGap, shortSide/overlayGapShortSideDiv))
+	}
+	if cornerOverlay {
+		largeFontSize = max(minimumFontSize, float64(shortSide)*cornerFontShortSideRatio)
+		smallFontSize = largeFontSize * cornerSmallFontRatio
+		textGap = max(4, int(largeFontSize*cornerSpacingFontRatio))
+		sideInset = min(max(6, int(largeFontSize*cornerInsetFontRatio)), max(1, width/8))
+	}
 	return layoutMetrics{
-		framePad:      framePad,
-		textGap:       max(minimumTextGap, int(float64(shortSide)*textGapShortSideRatio)),
-		sideInset:     min(max(minimumSideInset, int(float64(shortSide)*sideInsetShortSideRatio)), max(1, width/8)),
-		largeFontSize: largeFontSize,
-		smallFontSize: largeFontSize * smallFontRatio,
+		framePad:        framePad,
+		textGap:         textGap,
+		sideInset:       sideInset,
+		largeFontSize:   largeFontSize,
+		smallFontSize:   smallFontSize,
+		overlayPosition: position,
 	}
 }
 
@@ -139,7 +178,10 @@ func wrapText(text string, face font.Face, maxWidth int) []string {
 	return lines
 }
 
-func layoutLabel(width, height int, metrics layoutMetrics, left, right []labelText) LabelLayout {
+func layoutLabel(width, height int, metrics layoutMetrics, left, right []labelText) (LabelLayout, error) {
+	if metrics.overlayPosition != overlayNone && metrics.overlayPosition != overlayFullWidth {
+		return layoutCornerOverlay(width, height, metrics, left, right, metrics.overlayPosition)
+	}
 	contentWidth := max(1, width-2*metrics.sideInset)
 	columnGap := metrics.sideInset
 	columnWidth := max(1, (contentWidth-columnGap)/2)
@@ -160,9 +202,11 @@ func layoutLabel(width, height int, metrics layoutMetrics, left, right []labelTe
 	framePad, gap := metrics.framePad, metrics.textGap
 	labelHeight := 0
 	if rows > 0 {
-		// The first-line gap includes the lower photo frame; the bottom gap is
-		// only the label spacing, as configured independently.
-		labelHeight = gap + framePad + gap
+		if metrics.framePad > 0 {
+			labelHeight = gap + framePad + gap
+		} else {
+			labelHeight = 2 * gap
+		}
 		for i := range rowAscents {
 			labelHeight += rowAscents[i] + rowDescents[i]
 		}
@@ -170,14 +214,31 @@ func layoutLabel(width, height int, metrics layoutMetrics, left, right []labelTe
 			labelHeight += (rows - 1) * gap
 		}
 	}
+	if metrics.overlayPosition == overlayFullWidth && labelHeight > height {
+		return LabelLayout{}, fmt.Errorf("EXIF overlay needs %d vertical pixels but the image is only %d pixels high", labelHeight, height)
+	}
 	canvasWidth := width + 2*framePad
 	canvasHeight := height + framePad + labelHeight
+	photoBounds := image.Rect(framePad, framePad, framePad+width, framePad+height)
+	var overlayBounds image.Rectangle
+	if metrics.overlayPosition != overlayNone {
+		canvasWidth, canvasHeight = width, height
+		photoBounds = image.Rect(0, 0, width, height)
+		if rows > 0 {
+			overlayTop := max(0, height-labelHeight)
+			overlayBounds = image.Rect(0, overlayTop, width, height)
+		}
+	}
 	result := LabelLayout{
-		CanvasBounds: image.Rect(0, 0, canvasWidth, canvasHeight),
-		PhotoBounds:  image.Rect(framePad, framePad, framePad+width, framePad+height),
-		Text:         make([]positionedText, 0, len(leftLines)+len(rightLines)),
+		CanvasBounds:  image.Rect(0, 0, canvasWidth, canvasHeight),
+		PhotoBounds:   photoBounds,
+		OverlayBounds: overlayBounds,
+		Text:          make([]positionedText, 0, len(leftLines)+len(rightLines)),
 	}
 	y := height + framePad + gap + framePad
+	if metrics.overlayPosition == overlayFullWidth {
+		y = max(0, height-labelHeight) + gap
+	}
 	for row := 0; row < rows; row++ {
 		baseline := y + rowAscents[row]
 		if row < len(leftLines) {
@@ -190,7 +251,66 @@ func layoutLabel(width, height int, metrics layoutMetrics, left, right []labelTe
 		}
 		y += rowAscents[row] + rowDescents[row] + gap
 	}
-	return result
+	return result, nil
+}
+
+func layoutCornerOverlay(width, height int, metrics layoutMetrics, left, right []labelText, position string) (LabelLayout, error) {
+	items := make([]labelText, 0, len(left)+len(right))
+	items = append(items, left...)
+	items = append(items, right...)
+	maxPanelWidth := max(1, int(float64(width)*cornerMaxWidthRatio)-2*metrics.sideInset)
+	lines := wrapColumn(items, maxPanelWidth)
+	rows := len(lines)
+	ascents, descents := make([]int, rows), make([]int, rows)
+	maxTextWidth := 0
+	for i, line := range lines {
+		bounds, _ := font.BoundString(line.face, line.text)
+		ascents[i] = (-bounds.Min.Y).Ceil()
+		descents[i] = bounds.Max.Y.Ceil()
+		maxTextWidth = max(maxTextWidth, font.MeasureString(line.face, line.text).Ceil())
+	}
+	if rows == 0 {
+		return LabelLayout{CanvasBounds: image.Rect(0, 0, width, height), PhotoBounds: image.Rect(0, 0, width, height)}, nil
+	}
+	panelPadding := max(4, int(metrics.largeFontSize*cornerInsetFontRatio))
+	panelWidth := maxTextWidth + 2*panelPadding
+	panelHeight := 2 * panelPadding
+	for i := range ascents {
+		panelHeight += ascents[i] + descents[i]
+	}
+	if rows > 1 {
+		panelHeight += (rows - 1) * metrics.textGap
+	}
+	if panelHeight > height || panelWidth+2*metrics.sideInset > width {
+		return LabelLayout{}, fmt.Errorf("compact EXIF overlay does not fit in %dx%d image", width, height)
+	}
+	leftSide := strings.HasSuffix(position, "left")
+	topSide := strings.HasPrefix(position, "top")
+	panelLeft, panelTop := metrics.sideInset, height-metrics.sideInset-panelHeight
+	if !leftSide {
+		panelLeft = width - metrics.sideInset - panelWidth
+	}
+	if topSide {
+		panelTop = metrics.sideInset
+	}
+	panel := image.Rect(panelLeft, panelTop, panelLeft+panelWidth, panelTop+panelHeight)
+	result := LabelLayout{
+		CanvasBounds:  image.Rect(0, 0, width, height),
+		PhotoBounds:   image.Rect(0, 0, width, height),
+		OverlayBounds: panel,
+		Text:          make([]positionedText, 0, rows),
+	}
+	y := panel.Min.Y + panelPadding
+	for i, line := range lines {
+		baseline := y + ascents[i]
+		x := panel.Min.X + panelPadding
+		if !leftSide {
+			x = panel.Max.X - panelPadding - font.MeasureString(line.face, line.text).Ceil()
+		}
+		result.Text = append(result.Text, positionedText{line.text, line.face, x, baseline})
+		y += ascents[i] + descents[i] + metrics.textGap
+	}
+	return result, nil
 }
 
 func wrapColumn(items []labelText, width int) []labelText {
