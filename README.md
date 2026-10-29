@@ -8,7 +8,7 @@
 
 ```bash
 # Install
-$ go install github.com/mu-ruU1/go-exiframe@latest
+$ go install github.com/ytakag/go-exiframe@latest
 
 # Help
 $ go-exiframe -h
@@ -16,15 +16,31 @@ Usage of go-exiframe:
   -black
         Use black color frame (default white)
   -f string
-        Path to the image file (required)
+        Image path; repeat -f to process multiple images
+  -frame-ratio float
+        Frame width as a fraction of the shorter image side (default 0.03)
   -no-frame
-        Do not draw frame (default draw frame)
+        Draw no border around the image
   -no-model
-        Do not draw model data (default draw model data)
+        Omit camera and lens data
+  -overlay-position string
+        Overlay position: none, full-width, top-left, top-right, bottom-left, bottom-right (default "none")
+  -o string
+        Output JPEG path (single input only)
+  -out-dir string
+        Output directory (default ".")
+  -preserve-exif
+        Preserve source JPEG EXIF metadata in output
+  -quality int
+        JPEG quality (1-100, default 100)
 
 # Example
 $ go-exiframe -f /path/to/image.jpg
-## Export file to exiframe-image.jpg
+# Writes ./exiframe-image.jpg
+$ go-exiframe -f /path/to/image.jpg -o /path/to/result.jpg -quality 90
+$ go-exiframe -f ./first.jpg -f ./second.jpg -out-dir ./framed -preserve-exif
+$ go-exiframe -f ./image.jpg -overlay-position full-width
+$ go-exiframe -f ./image.jpg -overlay-position top-right
 ```
 
 ## 参考
