@@ -110,33 +110,37 @@ func calculateLayoutMetrics(width, height int, cfg Config) layoutMetrics {
 
 func buildLabelText(meta *ExifData, cfg Config, bold, regular font.Face) ([]labelText, []labelText) {
 	left, right := []labelText{}, []labelText{}
-	if !cfg.noModel {
+	if !cfg.noCamera {
 		if v := compact(meta.Make, meta.Model); v != "" {
 			left = append(left, labelText{v, bold})
 		}
+	}
+	if !cfg.noLens {
 		if v := compact(meta.LensMake, meta.LensModel); v != "" {
 			left = append(left, labelText{v, regular})
 		}
 	}
 	shooting := []string{}
-	if meta.FocalLength35mm != "" {
-		shooting = append(shooting, meta.FocalLength35mm+"mm")
-	} else if meta.FocalLength != "" {
-		shooting = append(shooting, meta.FocalLength+"mm")
-	}
-	if meta.FNumber != "" {
-		shooting = append(shooting, "f/"+meta.FNumber)
-	}
-	if meta.ExposureTime != "" {
-		shooting = append(shooting, meta.ExposureTime+"s")
-	}
-	if meta.ISO != "" {
-		shooting = append(shooting, "ISO"+meta.ISO)
+	if !cfg.noShooting {
+		if meta.FocalLength35mm != "" {
+			shooting = append(shooting, meta.FocalLength35mm+"mm")
+		} else if meta.FocalLength != "" {
+			shooting = append(shooting, meta.FocalLength+"mm")
+		}
+		if meta.FNumber != "" {
+			shooting = append(shooting, "f/"+meta.FNumber)
+		}
+		if meta.ExposureTime != "" {
+			shooting = append(shooting, meta.ExposureTime+"s")
+		}
+		if meta.ISO != "" {
+			shooting = append(shooting, "ISO"+meta.ISO)
+		}
 	}
 	if v := strings.Join(shooting, "  "); v != "" {
 		right = append(right, labelText{v, bold})
 	}
-	if meta.DateTimeOriginal != "" {
+	if !cfg.noDate && meta.DateTimeOriginal != "" {
 		right = append(right, labelText{meta.DateTimeOriginal, regular})
 	}
 	return left, right
@@ -200,7 +204,7 @@ func layoutLabel(width, height int, metrics layoutMetrics, left, right []labelTe
 		}
 	}
 	framePad, gap := metrics.framePad, metrics.textGap
-	labelHeight := 0
+	labelHeight := framePad
 	if rows > 0 {
 		if metrics.framePad > 0 {
 			labelHeight = gap + framePad + gap

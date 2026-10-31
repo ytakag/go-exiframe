@@ -5,20 +5,24 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 type Config struct {
-	inputPaths              []string
-	outputPath              string
-	outputDir               string
-	black, noFrame, noModel bool
-	overlayPosition         string
-	preserveExif            bool
-	frameRatio              float64
-	quality                 int
+	inputPaths                                           []string
+	outputPath                                           string
+	outputDir                                            string
+	black, noFrame, noCamera, noLens, noShooting, noDate bool
+	overlayPosition                                      string
+	preserveExif                                         bool
+	frameRatio                                           float64
+	padTo                                                string
+	padRatio                                             float64
+	quality                                              int
 }
 
 type inputPathsFlag []string
@@ -37,15 +41,30 @@ func parseConfig(args []string, output io.Writer) (Config, error) {
 	var paths inputPathsFlag
 	fs := flag.NewFlagSet("go-exiframe", flag.ContinueOnError)
 	fs.SetOutput(output)
+	fs.Usage = func() {
+		fmt.Fprintln(output, "Usage of go-exiframe:")
+		fmt.Fprintln(output, "\nRequired:")
+		printFlagGroup(fs, output, "f")
+		fmt.Fprintln(output, "\nOptional — output:")
+		printFlagGroup(fs, output, "o", "out-dir", "quality", "preserve-exif")
+		fmt.Fprintln(output, "\nOptional — image layout:")
+		printFlagGroup(fs, output, "pad-to", "frame-ratio", "no-frame", "black", "overlay-position")
+		fmt.Fprintln(output, "\nOptional — displayed information:")
+		printFlagGroup(fs, output, "no-camera", "no-lens", "no-shooting", "no-date")
+	}
 	fs.Var(&paths, "f", "Path to an image file; repeat -f to process multiple images")
 	fs.StringVar(&cfg.outputPath, "o", "", "Output JPEG path (single input only)")
 	fs.StringVar(&cfg.outputDir, "out-dir", ".", "Output directory")
 	fs.BoolVar(&cfg.black, "black", false, "Use black frame (default white)")
 	fs.BoolVar(&cfg.noFrame, "no-frame", false, "Draw no border around the image")
-	fs.BoolVar(&cfg.noModel, "no-model", false, "Omit camera and lens data")
+	fs.BoolVar(&cfg.noCamera, "no-camera", false, "Omit camera make and model")
+	fs.BoolVar(&cfg.noLens, "no-lens", false, "Omit lens make and model")
+	fs.BoolVar(&cfg.noShooting, "no-shooting", false, "Omit shooting settings (focal length, aperture, exposure, ISO)")
+	fs.BoolVar(&cfg.noDate, "no-date", false, "Omit shooting date and time")
 	fs.StringVar(&cfg.overlayPosition, "overlay-position", "none", "Overlay position: none, full-width, top-left, top-right, bottom-left, bottom-right")
 	fs.BoolVar(&cfg.preserveExif, "preserve-exif", false, "Preserve source JPEG EXIF metadata in output")
 	fs.Float64Var(&cfg.frameRatio, "frame-ratio", defaultFrameRatio, "Frame width as a fraction of the shorter image side")
+	fs.StringVar(&cfg.padTo, "pad-to", "", "Add padding to fit the final image inside this aspect ratio (for example 4:5 or 1.91:1)")
 	fs.IntVar(&cfg.quality, "quality", defaultJPEGQuality, "JPEG quality (1-100)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
@@ -57,6 +76,29 @@ func parseConfig(args []string, output io.Writer) (Config, error) {
 	return cfg, nil
 }
 
+func printFlagGroup(fs *flag.FlagSet, output io.Writer, names ...string) {
+	valueNames := map[string]string{
+		"f": "path", "o": "path", "out-dir": "path", "pad-to": "ratio",
+		"frame-ratio": "float", "quality": "int", "overlay-position": "position",
+	}
+	for _, name := range names {
+		item := fs.Lookup(name)
+		if item == nil {
+			continue
+		}
+		if valueName := valueNames[name]; valueName != "" {
+			fmt.Fprintf(output, "  -%s %s\n", name, valueName)
+		} else {
+			fmt.Fprintf(output, "  -%s\n", name)
+		}
+		description := item.Usage
+		if item.DefValue != "" && item.DefValue != "false" && item.DefValue != "0" {
+			description += fmt.Sprintf(" (default %s)", item.DefValue)
+		}
+		fmt.Fprintf(output, "        %s\n", description)
+	}
+}
+
 func (cfg *Config) validate() error {
 	if len(cfg.inputPaths) == 0 {
 		return errors.New("provide at least one input path with -f")
@@ -66,6 +108,18 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.quality < 1 || cfg.quality > 100 {
 		return errors.New("-quality must be between 1 and 100")
+	}
+	if cfg.padTo != "" {
+		parts := strings.Split(cfg.padTo, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("-pad-to must be a width:height ratio such as 4:5")
+		}
+		width, errWidth := strconv.ParseFloat(parts[0], 64)
+		height, errHeight := strconv.ParseFloat(parts[1], 64)
+		if errWidth != nil || errHeight != nil || width <= 0 || height <= 0 || math.IsNaN(width) || math.IsNaN(height) || math.IsInf(width, 0) || math.IsInf(height, 0) {
+			return fmt.Errorf("-pad-to must contain positive width and height values, such as 4:5")
+		}
+		cfg.padRatio = width / height
 	}
 	switch cfg.overlayPosition {
 	case overlayNone, overlayFullWidth, overlayTopLeft, overlayTopRight, overlayBottomLeft, overlayBottomRight:

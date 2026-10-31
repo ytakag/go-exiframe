@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -77,7 +78,27 @@ func renderImage(cfg Config, inputPath, outputPath string, meta *ExifData, exifS
 		d := &font.Drawer{Dst: canvas, Src: textColor, Face: line.face, Dot: fixed.P(line.x, line.baseline)}
 		d.DrawString(line.text)
 	}
+	if cfg.padRatio > 0 {
+		canvas = padToRatio(canvas, cfg.padRatio, frameColor)
+	}
 	return writeJPEG(outputPath, canvas, cfg.quality, exifSegment)
+}
+
+// padToRatio expands an image to the requested width/height ratio without cropping.
+func padToRatio(img image.Image, ratio float64, padColor color.Color) *image.RGBA {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	newW, newH := w, h
+	if float64(w)/float64(h) < ratio {
+		newW = int(math.Ceil(float64(h) * ratio))
+	} else {
+		newH = int(math.Ceil(float64(w) / ratio))
+	}
+	out := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.Draw(out, out.Bounds(), image.NewUniform(padColor), image.Point{}, draw.Src)
+	left, top := (newW-w)/2, (newH-h)/2
+	draw.Draw(out, image.Rect(left, top, left+w, top+h), img, bounds.Min, draw.Src)
+	return out
 }
 
 func writeJPEG(path string, img image.Image, quality int, exifSegment []byte) (result error) {
