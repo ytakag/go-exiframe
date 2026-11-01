@@ -64,10 +64,6 @@ $ go-exiframe -f ./image.jpg -pad-to 4:5
 $ go-exiframe -f ./image.jpg -pad-to 1.91:1 -black
 ```
 
-`-pad-to` keeps the complete rendered image visible and adds centered white padding to reach the specified width:height ratio. Use `-black` to make the padding black. If the image is already wider or taller than the requested ratio, it is kept as-is in that dimension and padding is added on the other axis; the option never crops the image.
-
-Use `-no-camera`, `-no-lens`, `-no-shooting`, and `-no-date` independently to omit those information groups.
-
 ## 参考
 
 - [go-exif/v3](https://pkg.go.dev/github.com/dsoprea/go-exif/v3)
