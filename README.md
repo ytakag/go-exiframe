@@ -50,6 +50,28 @@ Optional — displayed information:
   -no-date
         Omit shooting date and time
 
+Optional — EXIF overrides:
+  -exif-make value
+        Override EXIF camera make
+  -exif-model value
+        Override EXIF camera model
+  -exif-lens-make value
+        Override EXIF lens make
+  -exif-lens-model value
+        Override EXIF lens model
+  -exif-focal-length mm
+        Override EXIF focal length in mm
+  -exif-focal-length-35mm mm
+        Override EXIF 35mm-equivalent focal length in mm
+  -exif-f-number number
+        Override EXIF aperture
+  -exif-exposure-time rational
+        Override EXIF exposure time
+  -exif-iso int
+        Override EXIF ISO sensitivity
+  -exif-date-time-original datetime
+        Override EXIF date/time (YYYY:MM:DD HH:MM:SS)
+
 # Example
 $ go-exiframe -f /path/to/image.jpg
 # Writes ./exiframe-image.jpg
@@ -62,6 +84,7 @@ $ go-exiframe -f ./image.jpg -no-camera -no-lens
 $ go-exiframe -f ./image.jpg -no-shooting -no-date
 $ go-exiframe -f ./image.jpg -pad-to 4:5
 $ go-exiframe -f ./image.jpg -pad-to 1.91:1 -black
+$ go-exiframe -f ./image.jpg -exif-lens-model "Voigtländer NOKTON classic 40mm F1.4" -exif-focal-length 40 -exif-f-number 1.4 -exif-focal-length-35mm 60
 ```
 
 ## 参考

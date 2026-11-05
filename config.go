@@ -10,19 +10,22 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
-	inputPaths                                           []string
-	outputPath                                           string
-	outputDir                                            string
-	black, noFrame, noCamera, noLens, noShooting, noDate bool
-	overlayPosition                                      string
-	preserveExif                                         bool
-	frameRatio                                           float64
-	padTo                                                string
-	padRatio                                             float64
-	quality                                              int
+	inputPaths                                                                                 []string
+	outputPath                                                                                 string
+	outputDir                                                                                  string
+	black, noFrame, noCamera, noLens, noShooting, noDate                                       bool
+	overlayPosition                                                                            string
+	preserveExif                                                                               bool
+	frameRatio                                                                                 float64
+	padTo                                                                                      string
+	padRatio                                                                                   float64
+	quality                                                                                    int
+	exifMake, exifModel, exifLensMake, exifLensModel                                           string
+	exifFocalLength, exifFocalLength35mm, exifFNumber, exifExposureTime, exifISO, exifDateTime string
 }
 
 type inputPathsFlag []string
@@ -51,6 +54,8 @@ func parseConfig(args []string, output io.Writer) (Config, error) {
 		printFlagGroup(fs, output, "pad-to", "frame-ratio", "no-frame", "black", "overlay-position")
 		fmt.Fprintln(output, "\nOptional — displayed information:")
 		printFlagGroup(fs, output, "no-camera", "no-lens", "no-shooting", "no-date")
+		fmt.Fprintln(output, "\nOptional — EXIF overrides:")
+		printFlagGroup(fs, output, "exif-make", "exif-model", "exif-lens-make", "exif-lens-model", "exif-focal-length", "exif-focal-length-35mm", "exif-f-number", "exif-exposure-time", "exif-iso", "exif-date-time-original")
 	}
 	fs.Var(&paths, "f", "Path to an image file; repeat -f to process multiple images")
 	fs.StringVar(&cfg.outputPath, "o", "", "Output JPEG path (single input only)")
@@ -66,6 +71,16 @@ func parseConfig(args []string, output io.Writer) (Config, error) {
 	fs.Float64Var(&cfg.frameRatio, "frame-ratio", defaultFrameRatio, "Frame width as a fraction of the shorter image side")
 	fs.StringVar(&cfg.padTo, "pad-to", "", "Add padding to fit the final image inside this aspect ratio (for example 4:5 or 1.91:1)")
 	fs.IntVar(&cfg.quality, "quality", defaultJPEGQuality, "JPEG quality (1-100)")
+	fs.StringVar(&cfg.exifMake, "exif-make", "", "Override EXIF camera make")
+	fs.StringVar(&cfg.exifModel, "exif-model", "", "Override EXIF camera model")
+	fs.StringVar(&cfg.exifLensMake, "exif-lens-make", "", "Override EXIF lens make")
+	fs.StringVar(&cfg.exifLensModel, "exif-lens-model", "", "Override EXIF lens model")
+	fs.StringVar(&cfg.exifFocalLength, "exif-focal-length", "", "Override EXIF focal length in mm")
+	fs.StringVar(&cfg.exifFocalLength35mm, "exif-focal-length-35mm", "", "Override EXIF 35mm-equivalent focal length in mm")
+	fs.StringVar(&cfg.exifFNumber, "exif-f-number", "", "Override EXIF aperture, for example 1.4")
+	fs.StringVar(&cfg.exifExposureTime, "exif-exposure-time", "", "Override EXIF exposure time, for example 1/125")
+	fs.StringVar(&cfg.exifISO, "exif-iso", "", "Override EXIF ISO sensitivity")
+	fs.StringVar(&cfg.exifDateTime, "exif-date-time-original", "", "Override EXIF date/time (YYYY:MM:DD HH:MM:SS)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -80,6 +95,7 @@ func printFlagGroup(fs *flag.FlagSet, output io.Writer, names ...string) {
 	valueNames := map[string]string{
 		"f": "path", "o": "path", "out-dir": "path", "pad-to": "ratio",
 		"frame-ratio": "float", "quality": "int", "overlay-position": "position",
+		"exif-make": "value", "exif-model": "value", "exif-lens-make": "value", "exif-lens-model": "value", "exif-focal-length": "mm", "exif-focal-length-35mm": "mm", "exif-f-number": "number", "exif-exposure-time": "rational", "exif-iso": "int", "exif-date-time-original": "datetime",
 	}
 	for _, name := range names {
 		item := fs.Lookup(name)
@@ -108,6 +124,36 @@ func (cfg *Config) validate() error {
 	}
 	if cfg.quality < 1 || cfg.quality > 100 {
 		return errors.New("-quality must be between 1 and 100")
+	}
+	if cfg.exifDateTime != "" {
+		if _, err := time.Parse("2006:01:02 15:04:05", cfg.exifDateTime); err != nil {
+			return fmt.Errorf("-exif-date-time-original must use YYYY:MM:DD HH:MM:SS")
+		}
+	}
+	for flag, value := range map[string]string{"-exif-focal-length": cfg.exifFocalLength, "-exif-f-number": cfg.exifFNumber} {
+		if value != "" {
+			n, err := parseRational(value)
+			if err != nil || n <= 0 || math.IsInf(n, 0) || math.IsNaN(n) {
+				return fmt.Errorf("%s must be a positive number or rational", flag)
+			}
+		}
+	}
+	if cfg.exifExposureTime != "" {
+		if _, err := formatExposureTime(cfg.exifExposureTime); err != nil {
+			return fmt.Errorf("-exif-exposure-time: %w", err)
+		}
+	}
+	if cfg.exifFocalLength35mm != "" {
+		n, err := strconv.Atoi(cfg.exifFocalLength35mm)
+		if err != nil || n < 1 || n > 65535 {
+			return errors.New("-exif-focal-length-35mm must be an integer from 1 to 65535")
+		}
+	}
+	if cfg.exifISO != "" {
+		n, err := strconv.Atoi(cfg.exifISO)
+		if err != nil || n < 1 || n > 65535 {
+			return errors.New("-exif-iso must be an integer from 1 to 65535")
+		}
 	}
 	if cfg.padTo != "" {
 		parts := strings.Split(cfg.padTo, ":")
@@ -230,12 +276,21 @@ func processInput(cfg Config, inputPath, outputPath string) error {
 		}
 	}
 	var exifSegment []byte
-	if cfg.preserveExif {
+	if cfg.preserveExif || hasExifOverrides(cfg) {
 		exifSegment, err = extractExifSegment(inputPath)
-		if errors.Is(err, errNoExifSegment) {
-			fmt.Fprintf(os.Stderr, "warning: %q has no JPEG EXIF segment; output will not contain EXIF metadata\n", inputPath)
+		if errors.Is(err, errNoExifSegment) || (hasExifOverrides(cfg) && !cfg.preserveExif && errors.Is(err, errNotJPEG)) {
+			if cfg.preserveExif {
+				fmt.Fprintf(os.Stderr, "warning: %q has no JPEG EXIF segment; output will not contain EXIF metadata\n", inputPath)
+			}
 			err = nil
 		}
+		if err != nil {
+			return err
+		}
+	}
+	if hasExifOverrides(cfg) {
+		applyExifOverrides(meta, cfg)
+		exifSegment, err = buildExifSegment(exifSegment, cfg)
 		if err != nil {
 			return err
 		}
