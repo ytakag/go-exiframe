@@ -128,7 +128,27 @@ func setExposureTime(d *ExifData, value string) error {
 }
 func setISO(d *ExifData, v string) error             { d.ISO = v; return nil }
 func setFocalLength35mm(d *ExifData, v string) error { d.FocalLength35mm = v; return nil }
-func setFocalLength(d *ExifData, v string) error     { d.FocalLength = v; return nil }
+func setFocalLength(d *ExifData, value string) error {
+	formatted, err := formatFocalLength(value)
+	if err != nil {
+		return err
+	}
+	d.FocalLength = formatted
+	return nil
+}
+
+func formatFocalLength(value string) (string, error) {
+	focalLength, ok := new(big.Rat).SetString(strings.TrimSpace(value))
+	if !ok || focalLength.Sign() <= 0 {
+		return "", fmt.Errorf("invalid focal length %q", value)
+	}
+	if focalLength.IsInt() {
+		return focalLength.Num().String(), nil
+	}
+	decimal := focalLength.FloatString(2)
+	decimal = strings.TrimRight(strings.TrimRight(decimal, "0"), ".")
+	return decimal, nil
+}
 
 func setFNumber(d *ExifData, value string) error {
 	n, err := parseRational(value)

@@ -30,7 +30,7 @@ func applyExifOverrides(d *ExifData, c Config) {
 		d.LensModel = c.exifLensModel
 	}
 	if c.exifFocalLength != "" {
-		d.FocalLength = c.exifFocalLength
+		d.FocalLength, _ = formatFocalLength(c.exifFocalLength)
 	}
 	if c.exifFocalLength35mm != "" {
 		d.FocalLength35mm = c.exifFocalLength35mm
