@@ -122,12 +122,10 @@ func buildLabelText(meta *ExifData, cfg Config, bold, regular font.Face) ([]labe
 	}
 	shooting := []string{}
 	if !cfg.noShooting {
-		if cfg.exifFocalLength != "" && meta.FocalLength != "" {
+		if meta.FocalLength != "" {
 			shooting = append(shooting, meta.FocalLength+"mm")
 		} else if meta.FocalLength35mm != "" {
 			shooting = append(shooting, meta.FocalLength35mm+"mm")
-		} else if meta.FocalLength != "" {
-			shooting = append(shooting, meta.FocalLength+"mm")
 		}
 		if meta.FNumber != "" {
 			shooting = append(shooting, "F"+meta.FNumber)
